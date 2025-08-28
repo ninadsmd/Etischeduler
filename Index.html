@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Resident Shift Scheduler</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    .calendar-day { display: inline-block; width: 100px; height: 100px; border: 1px solid #ccc; margin: 5px; text-align: center; vertical-align: top; cursor: pointer; }
+    .calendar { display: flex; flex-wrap: wrap; max-width: 700px; }
+    .modal, .admin-login { display: none; position: fixed; top: 20%; left: 35%; background: white; padding: 20px; border: 1px solid #ccc; }
+    .tabs { margin-top: 20px; }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    button { margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Resident Shift Scheduler</h1>
+
+  <div>
+    <button onclick="switchTab('request')">Request Shift</button>
+    <button onclick="switchTab('pending')">Pending Approval</button>
+    <button onclick="switchTab('approved')">Approved Shifts</button>
+  </div>
+
+  <div class="tabs">
+    <div id="request" class="tab active">
+      <h2>Request Shift</h2>
+      <div class="calendar" id="request-calendar"></div>
+    </div>
+
+    <div id="pending" class="tab">
+      <h2>Pending Approval</h2>
+      <button onclick="openAdminLogin()">Admin Login</button>
+      <div class="calendar" id="pending-calendar"></div>
+    </div>
+
+    <div id="approved" class="tab">
+      <h2>Approved Shifts</h2>
+      <div class="calendar" id="approved-calendar"></div>
+    </div>
+  </div>
+
+  <!-- Modal for shift submission -->
+  <div class="modal" id="shift-modal">
+    <h3>Request Shift on <span id="modal-date"></span></h3>
+    <label>Resident Name: <input type="text" id="resident-name" /></label><br />
+    <label>Shift Type: <select id="shift-type">
+      <option>Morning</option>
+      <option>Evening</option>
+      <option>Night</option>
+    </select></label><br />
+    <button onclick="submitShift()">Submit</button>
+    <button onclick="closeModal()">Cancel</button>
+  </div>
+
+  <!-- Admin PIN Login -->
+  <div class="admin-login" id="admin-login">
+    <h3>Enter Admin PIN</h3>
+    <input type="password" id="admin-pin" />
+    <button onclick="submitPin()">Login</button>
+  </div>
+
+  <script>
+    const API_URL = "https://api.sheetbest.com/sheets/a3e58e30-2dc3-4a51-a5b5-47fed1cb7c0d";
+    const adminPIN = "1234";
+    let selectedDate = null;
+    let isAdmin = false;
+    let allShifts = [];
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+    }
+
+    function renderCalendar(containerId, filterFn, showAction = false) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = "";
+      const now = new Date();
+      for (let i = 0; i < 30; i++) {
+        const day = new Date();
+        day.setDate(now.getDate() + i);
+        const dayStr = day.toISOString().split('T')[0];
+        const box = document.createElement('div');
+        box.className = 'calendar-day';
+        box.innerHTML = `<strong>${dayStr}</strong>`;
+
+        const shifts = allShifts.filter(s => s.date === dayStr && filterFn(s));
+        shifts.forEach(s => {
+          box.innerHTML += `<div>${s.resident} (${s.shift})</div>`;
+          if (showAction && isAdmin) {
+            const btn = document.createElement('button');
+            btn.textContent = "Approve";
+            btn.onclick = () => approveShift(s);
+            box.appendChild(btn);
+          }
+        });
+
+        if (containerId === 'request-calendar') {
+          box.onclick = () => openModal(dayStr);
+        }
+
+        container.appendChild(box);
+      }
+    }
+
+    function openModal(date) {
+      selectedDate = date;
+      document.getElementById("modal-date").textContent = date;
+      document.getElementById("shift-modal").style.display = "block";
+    }
+
+    function closeModal() {
+      document.getElementById("shift-modal").style.display = "none";
+    }
+
+    function openAdminLogin() {
+      document.getElementById("admin-login").style.display = "block";
+    }
+
+    function submitPin() {
+      const pin = document.getElementById("admin-pin").value;
+      if (pin === adminPIN) {
+        isAdmin = true;
+        alert("Admin mode enabled");
+        renderAll();
+      } else {
+        alert("Incorrect PIN");
+      }
+      document.getElementById("admin-login").style.display = "none";
+    }
+
+    function submitShift() {
+      const resident = document.getElementById("resident-name").value;
+      const shift = document.getElementById("shift-type").value;
+      const entry = {
+        date: selectedDate,
+        resident: resident,
+        type: shift,
+        shift: shift,
+        status: "Pending"
+      };
+      fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(entry)
+      }).then(() => {
+        allShifts.push(entry);
+        renderAll();
+        closeModal();
+      });
+    }
+
+    function approveShift(shift) {
+      fetch(API_URL, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: shift.date,
+          resident: shift.resident,
+          type: shift.type,
+          shift: shift.shift,
+          status: "Approved"
+        })
+      }).then(() => {
+        shift.status = "Approved";
+        renderAll();
+      });
+    }
+
+    function renderAll() {
+      renderCalendar("request-calendar", s => true);
+      renderCalendar("pending-calendar", s => s.status === "Pending", true);
+      renderCalendar("approved-calendar", s => s.status === "Approved");
+    }
+
+    function loadShifts() {
+      fetch(API_URL)
+        .then(res => res.json())
+        .then(data => {
+          allShifts = data;
+          renderAll();
+        });
+    }
+
+    window.onload = loadShifts;
+  </script>
+</body>
+</html>
