@@ -1,0 +1,156 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Resident Shift Scheduler</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; margin: 0; background: #f4f6f8; color: #333; }
+    header { background: #0d47a1; color: white; padding: 1rem; text-align: center; }
+    .container { padding: 1rem; max-width: 1000px; margin: auto; }
+    .instructions {
+      background: #fff; border-left: 4px solid #0d47a1; padding: 1rem; margin-bottom: 1rem;
+      font-size: 0.95rem; line-height: 1.5; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }
+    .btn-group { text-align: center; margin-bottom: 1rem; }
+    button {
+      background: #1976d2; color: white; padding: 0.5rem 1rem; margin: 0.2rem;
+      border: none; border-radius: 4px; cursor: pointer;
+    }
+    button:hover { background: #1565c0; }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    .calendar { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0.75rem; }
+    .calendar-day {
+      background: white; border-radius: 8px; padding: 0.5rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer;
+    }
+    .calendar-day strong { display: block; margin-bottom: 0.5rem; color: #0d47a1; }
+    .calendar-day div { font-size: 0.85rem; }
+    .modal, .admin-login {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%); background: white; border-radius: 8px;
+      padding: 1rem; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 1000;
+      width: 90%; max-width: 400px;
+    }
+    .modal input, .modal select,
+    .admin-login input {
+      width: 100%; margin-bottom: 1rem; padding: 0.5rem;
+      border: 1px solid #ccc; border-radius: 4px;
+    }
+    .overlay {
+      position: fixed; top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.5); z-index: 999;
+    }
+    @media (max-width: 600px) {
+      .calendar-day { font-size: 0.8rem; }
+      button { font-size: 0.85rem; padding: 0.4rem 0.6rem; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Resident Shift Scheduler</h1>
+</header>
+<div class="container">
+  <div class="btn-group">
+    <button onclick="switchTab('request')">Request Shift</button>
+    <button onclick="switchTab('pending')">Pending</button>
+    <button onclick="switchTab('approved')">Approved</button>
+    <button onclick="adminLogin()">🔐 Admin</button>
+  </div>
+
+  <div id="request" class="tab active">
+    <h2>Request Shift</h2>
+    <div class="instructions">
+      <strong>Instructions for Scheduling</strong><br><br>
+      In a proposed 14-day block, the resident would work 7 shifts.<br>
+      • In a 4-week block, the resident would work 14 shifts.<br>
+      • One exception would be if the resident selects 5 PM – 12 AM shifts, which are weighted more heavily, as follows:<br>
+      ◦ In a two-week block, if the resident works two 5 PM – 12 AM shifts it counts as 3 shifts, four (max) 5 PM – 12 AM shifts count as a total of 6, and the remainder of the shifts are other time slots to total 7 shifts.<br>
+      ◦ In a four-week block, if the resident works two 5 PM – 12 AM shifts it counts as 3 shifts, four 5 PM – 12 AM shifts count as a total of 6, and six (max) 5 PM – 12 AM shifts count as a total of 9, and the remainder of the shifts are other time slots to total 14 shifts.<br>
+      • Weekends are not required, but could be incorporated at the discretion of the resident (say if they wanted to block shifts in a row for a longer period of time off).<br>
+      • All schedules will comply with ACGME guidelines.
+    </div>
+    <div class="calendar" id="request-calendar"></div>
+  </div>
+
+  <div id="pending" class="tab">
+    <h2>Pending Approval</h2>
+    <div class="calendar" id="pending-calendar"></div>
+  </div>
+
+  <div id="approved" class="tab">
+    <h2>Approved Shifts <button onclick="exportCSV()">Export CSV</button> <button onclick="exportPDF()">Export PDF</button></h2>
+    <div class="calendar" id="approved-calendar"></div>
+  </div>
+</div>
+
+<div class="admin-login" id="adminModal" style="display:none;">
+  <h3>Admin Login</h3>
+  <input type="password" id="adminPin" placeholder="Enter 4-digit PIN" />
+  <button onclick="verifyPin()">Submit</button>
+</div>
+
+<script>
+const sheetAPI = "https://api.sheetbest.com/sheets/a3e58e30-2dc3-4a51-a5b5-47fed1cb7c0d";
+const ADMIN_PIN = "1234";
+
+function switchTab(tabId) {
+  document.querySelectorAll(".tab").forEach(tab => tab.classList.remove("active"));
+  document.getElementById(tabId).classList.add("active");
+}
+
+function adminLogin() {
+  document.getElementById("adminModal").style.display = "block";
+}
+
+function verifyPin() {
+  const pin = document.getElementById("adminPin").value;
+  if (pin === ADMIN_PIN) {
+    alert("Admin mode activated!");
+    document.getElementById("adminModal").style.display = "none";
+  } else {
+    alert("Incorrect PIN.");
+  }
+}
+
+function exportCSV() {
+  fetch(sheetAPI)
+    .then(res => res.json())
+    .then(data => {
+      const approved = data.filter(row => row.status === "approved");
+      const csvRows = [["Date", "Resident", "Resident Type", "Shift Type"]];
+      approved.forEach(row => {
+        csvRows.push([row.date, row.name, row.type, row.shift]);
+      });
+      const csv = csvRows.map(e => e.join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "approved_shifts.csv";
+      link.click();
+    });
+}
+
+function exportPDF() {
+  fetch(sheetAPI)
+    .then(res => res.json())
+    .then(data => {
+      const approved = data.filter(row => row.status === "approved");
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.text("Approved Shifts", 10, 10);
+      approved.forEach((row, i) => {
+        doc.text(`${row.date} - ${row.name} - ${row.type} - ${row.shift}`, 10, 20 + i * 10);
+      });
+      doc.save("approved_shifts.pdf");
+    });
+}
+</script>
+</body>
+</html>
