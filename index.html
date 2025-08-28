@@ -4,187 +4,185 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Resident Shift Scheduler</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    .calendar-day { display: inline-block; width: 100px; height: 100px; border: 1px solid #ccc; margin: 5px; text-align: center; vertical-align: top; cursor: pointer; }
-    .calendar { display: flex; flex-wrap: wrap; max-width: 700px; }
-    .modal, .admin-login { display: none; position: fixed; top: 20%; left: 35%; background: white; padding: 20px; border: 1px solid #ccc; }
-    .tabs { margin-top: 20px; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Inter', sans-serif;
+      background: #f4f6f8;
+      color: #333;
+    }
+    header {
+      background: #0d47a1;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+    }
+    .container {
+      padding: 1rem;
+      max-width: 1000px;
+      margin: auto;
+    }
+    .instructions {
+      background: #ffffff;
+      border-left: 4px solid #0d47a1;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    }
+    .btn-group { text-align: center; margin-bottom: 1rem; }
+    button {
+      background: #1976d2;
+      color: white;
+      padding: 0.5rem 1rem;
+      margin: 0.2rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover { background: #1565c0; }
     .tab { display: none; }
     .tab.active { display: block; }
-    button { margin-top: 10px; }
+    .calendar {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 0.75rem;
+    }
+    .calendar-day {
+      background: white;
+      border-radius: 8px;
+      padding: 0.5rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      cursor: pointer;
+    }
+    .calendar-day strong {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: #0d47a1;
+    }
+    .calendar-day div {
+      font-size: 0.85rem;
+    }
+    .modal, .admin-login, .edit-modal {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      border-radius: 8px;
+      padding: 1rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      z-index: 1000;
+      width: 90%;
+      max-width: 400px;
+    }
+    .modal input, .modal select,
+    .admin-login input,
+    .edit-modal input, .edit-modal select {
+      width: 100%;
+      margin-bottom: 1rem;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    .overlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 999;
+    }
+    .filter-group {
+      margin: 1rem 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+    }
+    .filter-group select {
+      padding: 0.4rem;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: white;
+    }
+    .badge.senior { background: #0d47a1; }
+    .badge.fellow { background: #388e3c; }
+    @media (max-width: 600px) {
+      .calendar-day { font-size: 0.8rem; }
+      button { font-size: 0.85rem; padding: 0.4rem 0.6rem; }
+      .filter-group { flex-direction: column; align-items: center; }
+    }
   </style>
 </head>
 <body>
-  <h1>Resident Shift Scheduler</h1>
+  <header>
+    <h1>Resident Shift Scheduler</h1>
+  </header>
+  <div class="container">
+    <div class="btn-group">
+      <button onclick="switchTab('request')">Request Shift</button>
+      <button onclick="switchTab('pending')">Pending</button>
+      <button onclick="switchTab('approved')">Approved</button>
+      <button onclick="exportCSV()">CSV</button>
+      <button onclick="exportPDF()">PDF</button>
+    </div>
 
-  <div>
-    <button onclick="switchTab('request')">Request Shift</button>
-    <button onclick="switchTab('pending')">Pending Approval</button>
-    <button onclick="switchTab('approved')">Approved Shifts</button>
-  </div>
+    <div class="filter-group">
+      <select id="filterResident" onchange="applyFilters()">
+        <option value="">Filter by Resident</option>
+      </select>
+      <select id="filterShiftType" onchange="applyFilters()">
+        <option value="">Filter by Shift Type</option>
+        <option value="5:00 PM to 11:59 PM EUHM">5:00 PM to 11:59 PM EUHM</option>
+        <option value="5:00 PM to 11:59 PM Grady">5:00 PM to 11:59 PM Grady</option>
+        <option value="12:00 PM to 8:00 PM Grady">12:00 PM to 8:00 PM Grady</option>
+      </select>
+    </div>
 
-  <div class="tabs">
     <div id="request" class="tab active">
       <h2>Request Shift</h2>
+      <div class="instructions">
+        <strong>Instructions for Scheduling</strong><br><br>
+        In a proposed 14-day block, the resident would work 7 shifts.<br>
+        • In a 4-week block, the resident would work 14 shifts.<br>
+        • One exception would be if the resident selects 5 PM – 12 AM shifts, which are weighted more heavily, as follows:<br>
+        ◦ In a two-week block, if the resident works two 5 PM – 12 AM shifts it counts as 3 shifts, four (max) 5 PM – 12 AM shifts count as a total of 6, and the remainder of the shifts are other time slots to total 7 shifts.<br>
+        ◦ In a four-week block, if the resident works two 5 PM – 12 AM shifts it counts as 3 shifts, four 5 PM – 12 AM shifts count as a total of 6, and six (max) 5 PM – 12 AM shifts count as a total of 9, and the remainder of the shifts are other time slots to total 14 shifts.<br>
+        • Weekends are not required, but could be incorporated at the discretion of the resident (say if they wanted to block shifts in a row for a longer period of time off).<br>
+        • All schedules will comply with ACGME guidelines.
+      </div>
       <div class="calendar" id="request-calendar"></div>
     </div>
 
     <div id="pending" class="tab">
-      <h2>Pending Approval</h2>
-      <button onclick="openAdminLogin()">Admin Login</button>
+      <h2>Pending Approval <button onclick="openAdminLogin()">🔐</button></h2>
       <div class="calendar" id="pending-calendar"></div>
     </div>
-
     <div id="approved" class="tab">
       <h2>Approved Shifts</h2>
       <div class="calendar" id="approved-calendar"></div>
     </div>
   </div>
 
-  <!-- Modal for shift submission -->
-  <div class="modal" id="shift-modal">
-    <h3>Request Shift on <span id="modal-date"></span></h3>
-    <label>Resident Name: <input type="text" id="resident-name" /></label><br />
-    <label>Shift Type: <select id="shift-type">
-      <option>Morning</option>
-      <option>Evening</option>
-      <option>Night</option>
-    </select></label><br />
-    <button onclick="submitShift()">Submit</button>
-    <button onclick="closeModal()">Cancel</button>
-  </div>
-
-  <!-- Admin PIN Login -->
-  <div class="admin-login" id="admin-login">
-    <h3>Enter Admin PIN</h3>
-    <input type="password" id="admin-pin" />
-    <button onclick="submitPin()">Login</button>
-  </div>
-
-  <script>
-    const API_URL = "https://api.sheetbest.com/sheets/a3e58e30-2dc3-4a51-a5b5-47fed1cb7c0d";
-    const adminPIN = "1234";
-    let selectedDate = null;
-    let isAdmin = false;
-    let allShifts = [];
-
-    function switchTab(tabId) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.getElementById(tabId).classList.add('active');
-    }
-
-    function renderCalendar(containerId, filterFn, showAction = false) {
-      const container = document.getElementById(containerId);
-      container.innerHTML = "";
-      const now = new Date();
-      for (let i = 0; i < 30; i++) {
-        const day = new Date();
-        day.setDate(now.getDate() + i);
-        const dayStr = day.toISOString().split('T')[0];
-        const box = document.createElement('div');
-        box.className = 'calendar-day';
-        box.innerHTML = `<strong>${dayStr}</strong>`;
-
-        const shifts = allShifts.filter(s => s.date === dayStr && filterFn(s));
-        shifts.forEach(s => {
-          box.innerHTML += `<div>${s.resident} (${s.shift})</div>`;
-          if (showAction && isAdmin) {
-            const btn = document.createElement('button');
-            btn.textContent = "Approve";
-            btn.onclick = () => approveShift(s);
-            box.appendChild(btn);
-          }
-        });
-
-        if (containerId === 'request-calendar') {
-          box.onclick = () => openModal(dayStr);
-        }
-
-        container.appendChild(box);
-      }
-    }
-
-    function openModal(date) {
-      selectedDate = date;
-      document.getElementById("modal-date").textContent = date;
-      document.getElementById("shift-modal").style.display = "block";
-    }
-
-    function closeModal() {
-      document.getElementById("shift-modal").style.display = "none";
-    }
-
-    function openAdminLogin() {
-      document.getElementById("admin-login").style.display = "block";
-    }
-
-    function submitPin() {
-      const pin = document.getElementById("admin-pin").value;
-      if (pin === adminPIN) {
-        isAdmin = true;
-        alert("Admin mode enabled");
-        renderAll();
-      } else {
-        alert("Incorrect PIN");
-      }
-      document.getElementById("admin-login").style.display = "none";
-    }
-
-    function submitShift() {
-      const resident = document.getElementById("resident-name").value;
-      const shift = document.getElementById("shift-type").value;
-      const entry = {
-        date: selectedDate,
-        resident: resident,
-        type: shift,
-        shift: shift,
-        status: "Pending"
-      };
-      fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(entry)
-      }).then(() => {
-        allShifts.push(entry);
-        renderAll();
-        closeModal();
-      });
-    }
-
-    function approveShift(shift) {
-      fetch(API_URL, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: shift.date,
-          resident: shift.resident,
-          type: shift.type,
-          shift: shift.shift,
-          status: "Approved"
-        })
-      }).then(() => {
-        shift.status = "Approved";
-        renderAll();
-      });
-    }
-
-    function renderAll() {
-      renderCalendar("request-calendar", s => true);
-      renderCalendar("pending-calendar", s => s.status === "Pending", true);
-      renderCalendar("approved-calendar", s => s.status === "Approved");
-    }
-
-    function loadShifts() {
-      fetch(API_URL)
-        .then(res => res.json())
-        .then(data => {
-          allShifts = data;
-          renderAll();
-        });
-    }
-
-    window.onload = loadShifts;
-  </script>
+  <template id="shift-options">
+    <select id="residentType">
+      <option value="ETI Senior">ETI Senior</option>
+      <option value="ETI mini fellow">ETI mini fellow</option>
+    </select>
+    <select id="shiftType">
+      <option value="5:00 PM to 11:59 PM EUHM">5:00 PM to 11:59 PM EUHM - Evening shift at EUHM</option>
+      <option value="5:00 PM to 11:59 PM Grady">5:00 PM to 11:59 PM Grady - Evening shift at Grady</option>
+      <option value="12:00 PM to 8:00 PM Grady">12:00 PM to 8:00 PM Grady - Day shift at Grady</option>
+    </select>
+  </template>
 </body>
 </html>
